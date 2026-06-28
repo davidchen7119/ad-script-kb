@@ -101,24 +101,28 @@ Run via Python with `PYTHONPATH` set correctly. Use background execution (`run_i
 
 **🚨 不可打断协议（CRITICAL — 两次违规后强化）**：
 
-Step 4 启动后，**必须**在同一轮 tool call batch 中同时发出 TaskOutput（block=true）阻塞等待结果。转写完成后，**禁止**向用户输出任何确认消息或停顿，直接在同一条消息中无缝衔接执行 Step 5–9。
+Step 4 启动后，**必须**在同一轮 tool call batch 中用 `sleep 180`（3 分钟）作为首次等待，之后检查文件是否生成。转写完成后，**禁止**向用户输出任何确认消息或停顿，直接在同一条消息中无缝衔接执行 Step 5–9。
 
 具体规则：
-1. **同一 batch**：`Bash(run_in_background=true)` 和 `TaskOutput(block=true, timeout=300000)` 必须在同一组 tool calls 中发出
-2. **不中断**：TaskOutput 返回后，立即 Read 转录文件并在同一回复中完成 Step 5 校正 + Step 6 分类 + Step 7 写入分析文件 + Step 8 归档索引 + Step 9 日志更新
-3. **禁止的行为**：
+1. **同一 batch 启动 + 分段等待**：`Bash(run_in_background=true)` 启动 Whisper 后，在同一组 tool calls 中发出 `Bash("sleep 180 && test -f /tmp/{id}.txt || echo NOT_READY")`，3 分钟后检查文件
+2. **分段重试**：若首次返回 `NOT_READY`，再 `sleep 60` → 检查；仍未完成则 `sleep 60` 再试。最多重试 3 次（总等待 ≤ 6 分钟），超过则改用 `TaskOutput(block=true, timeout=120000)` 兜底
+3. **不中断**：转录文件生成后，立即 Read 并在同一回复中完成 Step 5 校正 + Step 6 分类 + Step 7 写入分析文件 + Step 8 归档索引 + Step 9 日志更新
+4. **禁止的行为**：
    - ❌ 转写启动后输出「正在转写中，稍后通知你」然后停止
    - ❌ 转写完成后输出「转写完成，现在来写分析」然后等待下一轮
    - ❌ 在任何步骤之间停下来等待用户推动
-   - ❌ 整个 Step 4-9 链条中，任何单个 step 完成后输出聊天消息但不继续下一步
-4. **允许的例外**：仅当分析文件写入工具报错（如 InternalServerError）时，可以在下一轮重试写入，但仍需从断点继续而非从头开始
+   - ❌ 整个 Step 4–9 链条中，任何单个 step 完成后输出聊天消息但不继续下一步
+5. **允许的例外**：仅当分析文件写入工具报错（如 InternalServerError）时，可以在下一轮重试写入，但仍需从断点继续而非从头开始
 
-**⚠️ 长音频处理与假通知**：
+**⚠️ 分段等待节奏说明**：
 
-音频 > 3 分钟时，CPU Whisper 可能需要 4–7 分钟完成。`<task-notification>` 可能因系统内部超时在任务仍在运行时**虚假触发**。处理方案：
-- **不依赖通知**：每次收到 `<task-notification>` 后，用 `test -f /tmp/{id}.txt` 验证文件是否真实存在，不存在则继续等待
-- **进度解读**：tqdm 进度条（如 `87%|████…| 30300/34783`）仅追踪**音频特征提取阶段**。100% 后还有 1–2 分钟的**解码阶段**（无进度条）。此时任务仍在运行，只需等待
-- **用户沟通**：等待期间只用极简短句（如「57%，约 2 分钟」）更新状态，不展开解释、不提问、不求反馈
+绝大多数宣传片时长在 2–5 分钟，CPU Whisper 转写耗时约 3–5 分钟。以 3 分钟作为首次检查点，覆盖 80% 以上的场景：
+- **首次检查**（3 min）：大部分视频此时已完成转写，直接进入 Step 5
+- **二次检查**（4 min）：少量较长的视频需要额外 1 分钟
+- **三次检查**（5 min）：极少超 5 分钟的视频
+- **兜底**（> 5 min）：`TaskOutput(block=true)` 阻塞等待最长 2 分钟
+
+等待期间只用极简短句（如「转写中，3 分钟后检查」「再等 1 分钟」）更新状态，不展开解释、不提问、不求反馈。
 
 ### Step 5: Manual Correction of Transcription
 
