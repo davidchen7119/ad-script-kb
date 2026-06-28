@@ -1,0 +1,15 @@
+# macOS
+.DS_Store
+
+# Temp files
+*.tmp
+*.wav
+*.mp4
+
+# Python
+__pycache__/
+*.pyc
+
+# Skill packaging
+*.zip
+
