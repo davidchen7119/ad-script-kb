@@ -97,9 +97,21 @@ with open('/tmp/{id}.txt', 'w', encoding='utf-8') as f:
         f.write(f"[{seg['start']:.1f}-{seg['end']:.1f}] {seg['text'].strip()}\n")
 ```
 
-Run via Python with `PYTHONPATH` set correctly. Use background execution (`run_in_background=true`) for audio > 3 minutes.
+Run via Python with `PYTHONPATH` set correctly. Use background execution (`run_in_background=true`).
 
-**CRITICAL**: After launching Whisper in background, use `TaskOutput` with `block=true` to actively poll for completion. Do NOT wait for the user to remind you — check the result immediately after the notification arrives, then proceed to Step 5 without interruption.
+**🚨 不可打断协议（CRITICAL — 两次违规后强化）**：
+
+Step 4 启动后，**必须**在同一轮 tool call batch 中同时发出 TaskOutput（block=true）阻塞等待结果。转写完成后，**禁止**向用户输出任何确认消息或停顿，直接在同一条消息中无缝衔接执行 Step 5–9。
+
+具体规则：
+1. **同一 batch**：`Bash(run_in_background=true)` 和 `TaskOutput(block=true, timeout=300000)` 必须在同一组 tool calls 中发出
+2. **不中断**：TaskOutput 返回后，立即 Read 转录文件并在同一回复中完成 Step 5 校正 + Step 6 分类 + Step 7 写入分析文件 + Step 8 归档索引 + Step 9 日志更新
+3. **禁止的行为**：
+   - ❌ 转写启动后输出「正在转写中，稍后通知你」然后停止
+   - ❌ 转写完成后输出「转写完成，现在来写分析」然后等待下一轮
+   - ❌ 在任何步骤之间停下来等待用户推动
+   - ❌ 整个 Step 4-9 链条中，任何单个 step 完成后输出聊天消息但不继续下一步
+4. **允许的例外**：仅当分析文件写入工具报错（如 InternalServerError）时，可以在下一轮重试写入，但仍需从断点继续而非从头开始
 
 ### Step 5: Manual Correction of Transcription
 
