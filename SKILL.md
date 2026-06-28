@@ -99,6 +99,8 @@ with open('/tmp/{id}.txt', 'w', encoding='utf-8') as f:
 
 Run via Python with `PYTHONPATH` set correctly. Use background execution (`run_in_background=true`) for audio > 3 minutes.
 
+**CRITICAL**: After launching Whisper in background, use `TaskOutput` with `block=true` to actively poll for completion. Do NOT wait for the user to remind you — check the result immediately after the notification arrives, then proceed to Step 5 without interruption.
+
 ### Step 5: Manual Correction of Transcription
 
 Whisper produces errors — especially with:
