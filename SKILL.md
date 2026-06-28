@@ -113,6 +113,13 @@ Step 4 启动后，**必须**在同一轮 tool call batch 中同时发出 TaskOu
    - ❌ 整个 Step 4-9 链条中，任何单个 step 完成后输出聊天消息但不继续下一步
 4. **允许的例外**：仅当分析文件写入工具报错（如 InternalServerError）时，可以在下一轮重试写入，但仍需从断点继续而非从头开始
 
+**⚠️ 长音频处理与假通知**：
+
+音频 > 3 分钟时，CPU Whisper 可能需要 4–7 分钟完成。`<task-notification>` 可能因系统内部超时在任务仍在运行时**虚假触发**。处理方案：
+- **不依赖通知**：每次收到 `<task-notification>` 后，用 `test -f /tmp/{id}.txt` 验证文件是否真实存在，不存在则继续等待
+- **进度解读**：tqdm 进度条（如 `87%|████…| 30300/34783`）仅追踪**音频特征提取阶段**。100% 后还有 1–2 分钟的**解码阶段**（无进度条）。此时任务仍在运行，只需等待
+- **用户沟通**：等待期间只用极简短句（如「57%，约 2 分钟」）更新状态，不展开解释、不提问、不求反馈
+
 ### Step 5: Manual Correction of Transcription
 
 Whisper produces errors — especially with:
