@@ -286,90 +286,14 @@ Append a log entry to `.workbuddy/memory/YYYY-MM-DD.md` with:
 
 Update `.workbuddy/memory/MEMORY.md` if any workflow refinements or user preferences emerged.
 
-### Step 10: Sync to Feishu Wiki
-
-**⚠️ 前置检查 — lark-cli 可用性**
-
-先检测飞书 CLI 是否正常配置，认证失败则跳过同步不阻塞主流程：
-
-```bash
-IDENTITY=$(lark-cli whoami --as user --format json 2>&1 | grep '"ok"' | head -1)
-if [ "$IDENTITY" != '"ok": true' ]; then
-    echo "SKIP_FEISHU:飞书 lark-cli 未配置或授权过期。请执行 lark-cli auth login --scope 补授权，跳过飞书同步。"
-else
-    echo "FEISHU_OK"
-fi
-```
-
-**如果跳过（SKIP_FEISHU）**，直接结束流程，不报错不阻塞。
-
-**如果认证成功（FEISHU_OK）**，继续：
-
-#### 10.1 目标空间与节点定位
-
-目标：在「灵感策划案例」知识空间（space_id: `7365728181730017283`）下，找到或创建「🎬 文案解说词知识库」文件夹节点。
-
-```bash
-# 搜索该空间下是否有「🎬 文案解说词知识库」节点
-lark-cli wiki +node-list --space-id 7365728181730017283 --as user --format json 2>&1 | grep "文案解说词知识库"
-```
-
-- 如果存在 → 记下其 `node_token` 作为父节点
-- 如果不存在 → 创建之：
-  ```bash
-  lark-cli wiki +node-create --space-id 7365728181730017283 --title "🎬 文案解说词知识库" --parent-token "" --format json
-  ```
-
-记下创建成功后的 `node_token`（即父节点 token），后续所有文档都在此之下。
-
-#### 10.2 按分类创建节点并同步文档
-
-根据 Step 6 确定的分类（`政务城市`、`企业商业`、`文旅人文`、`科教医疗公益`、`小众特色`），在「🎬 文案解说词知识库」下创建/确认对应的子文件夹节点。
-
-每个归档文档的执行流程：
-```bash
-# 假设：KB_ENTRY=`企业商业/好盈科技_解说词导演视角深度分析.md`
-# 假设：ARCHIVE_CONTENT 是该文件的完整 Markdown 内容
-# 假设：PARENT_NODE_TOKEN 是「🎬 文案解说词知识库/企业商业」的 node_token
-
-# 创建文档
-lark-cli docs +create --from-file "${ARCHIVE_CONTENT}" --as user --title "好盈科技_解说词导演视角深度分析" --parent-token "${PARENT_NODE_TOKEN}" --format json
-
-# 返回的 JSON 中会有 obj_token（文档 token）和 url
-# 将 url 记录下来，用于后续更新索引
-```
-
-**重要：飞书 Markdown 写入**
-
-- 不要直接贴原始 Markdown（表格和嵌套结构在飞书中容易错位）
-- 优先使用 `lark-cli docs +create --from-string '<html><h1>标题</h1><table>...</table></html>'` 写入
-- 表格必须转成 `<table>` HTML 格式；解说词原文放在 `<callout>` 高亮块内；创意元素用 `<bullet>` 列表
-
-**可接受的简化方案（如果手动转 HTML 太繁琐）**：
-- 直接用 `--from-file` 上传 `.md` 文件，飞书会自动解析 Markdown
-- 首次同步（15 份存量文档）手动确认飞书渲染效果，后续增量可自动化
-
-#### 10.3 同步更新飞书索引文档
-
-索引文档路径：`🎬 文案解说词知识库/📌 风格速查索引`
-
-首次执行时需要创建：
-```bash
-# 如果不存在则创建
-lark-cli docs +create --from-string '<h2>📌 风格速查索引</h2><table>...</table>' --as user --title "📌 风格速查索引" --parent-token "${PARENT_NODE_TOKEN}" --format json
-```
-
-每次新增文档后，更新该索引的表格行（使用 `lark-cli docs +update --command str_replace` 或 `append` 追加新行）。
-
-#### 10.4 同步后的清理
-
-飞书同步成功后，在 Step 9 的日志中标记 `✅ 飞书同步完成`。
-同步失败不影响前面的归档和索引更新，日志中标记 `⚠️ 飞书同步失败: [错误原因]`。
+- 飞书同步是**可选的、低频的定期操作**，不在每次 ad-script-kb 流程中自动执行
+- 手动同步方法：`cat archive/*/*.md | lark-cli docs +create --title "文案知识库批量同步" --format json`
+- 索引文档可定期用 `lark-cli docs +update --doc <token> --command append` 追加新条目
 
 ## Key Conventions
 
 - **User's inbox**: The user ONLY drops files into `inbox/`. They never manually edit `index.md` or move files between archive folders.
-- **飞书同步是非阻塞的**：Step 10 如果 lark-cli 未配置或认证失败，**不报错、不阻塞、直接跳过**。本地归档和索引更新始终是首要目标。
+- **飞书同步是非阻塞的**：本地归档和索引更新始终是首要目标。飞书同步可手动触发，不混入日常流程。
 - **Style classification**: Always justify style assignments with specific evidence from the transcript. Never assign a style without reasoning.
 - **Correction integrity**: Never fabricate content for unclear audio. Always mark with `【听不清】` and note it for user verification.
 - **Creative element extraction**: Each element must be concrete and reusable — not vague observations. Include why it works (psychological/narrative basis) and what types of ads it suits.
