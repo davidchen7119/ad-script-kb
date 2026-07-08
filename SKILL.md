@@ -286,14 +286,71 @@ Append a log entry to `.workbuddy/memory/YYYY-MM-DD.md` with:
 
 Update `.workbuddy/memory/MEMORY.md` if any workflow refinements or user preferences emerged.
 
-- 飞书同步是**可选的、低频的定期操作**，不在每次 ad-script-kb 流程中自动执行
-- 手动同步方法：`cat archive/*/*.md | lark-cli docs +create --title "文案知识库批量同步" --format json`
-- 索引文档可定期用 `lark-cli docs +update --doc <token> --command append` 追加新条目
+### Step 10: IMA 知识库同步检查
+
+> IMA MCP 只提供只读接口（get_knowledge_list / search_knowledge / fetch_media_content），**无法自动上传文档**。本步骤为半自动同步检查：自动对比本地与 IMA 的文档差异，输出需要手动上传的文件名和路径。
+
+**执行条件**：每次完成 Step 8（归档）后自动执行，非阻塞——IMA MCP 不可用时跳过即可。
+
+#### 10.1 获取 IMA「商业片文案」知识库文档列表
+
+使用 `mcp__ima-mcp__get_knowledge_list` 工具（需先通过 ToolSearch 加载 schema）：
+
+```
+ToolSearch(tool_names=["mcp__ima-mcp__get_knowledge_list"])
+DeferExecuteTool(
+  toolName="mcp__ima-mcp__get_knowledge_list",
+  params={
+    "knowledge_base_id": "0019ee4bb8406955",
+    "limit": 50
+  }
+)
+```
+
+- IMA 知识库 ID：`0019ee4bb8406955`（即「商业片文案」）
+- 如果 MCP 不可用或返回错误 → 输出 `⚠️ IMA MCP 连接失败，跳过同步检查`，流程结束
+
+#### 10.2 对比本地与 IMA 文档差异
+
+获取本地 `archive/` 下所有 `.md` 文件列表：
+
+```bash
+KB_ROOT="/Users/chenmengqiu/Downloads/文案知识库"
+find "${KB_ROOT}/archive" -name "*.md" -type f | sort
+```
+
+将本地文件名（去掉路径前缀和 `_解说词导演视角深度分析.md` 后缀，取品牌+标题关键词）与 IMA 返回的文档标题进行模糊匹配。
+
+#### 10.3 输出差量报告
+
+向用户输出**需要手动上传**的文件清单，格式如下：
+
+```
+📋 IMA 知识库同步检查
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+IMA「商业片文案」现有文档：N 份
+本地知识库文档：M 份
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+以下文件尚未同步到 IMA，请手动上传：
+
+1. 文件名：好盈科技_解说词导演视角深度分析.md
+   路径：/Users/chenmengqiu/Downloads/文案知识库/archive/企业商业/好盈科技_解说词导演视角深度分析.md
+
+2. 文件名：岩山科技_化繁为简生成未来_解说词导演视角深度分析.md
+   路径：/Users/chenmengqiu/Downloads/文案知识库/archive/企业商业/岩山科技_化繁为简生成未来_解说词导演视角深度分析.md
+
+...
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+💡 提示：打开 IMA 客户端 → 知识库 → 商业片文案 → 上传以上文件
+```
+
+如果本地与 IMA 完全同步，输出：`✅ IMA 知识库已同步，无需上传`。
 
 ## Key Conventions
 
 - **User's inbox**: The user ONLY drops files into `inbox/`. They never manually edit `index.md` or move files between archive folders.
-- **飞书同步是非阻塞的**：本地归档和索引更新始终是首要目标。飞书同步可手动触发，不混入日常流程。
+- **IMA 同步检查是非阻塞的**：Step 10 如果 MCP 不可用，不报错、不阻塞、直接跳过。本地归档和索引更新始终是首要目标。
 - **Style classification**: Always justify style assignments with specific evidence from the transcript. Never assign a style without reasoning.
 - **Correction integrity**: Never fabricate content for unclear audio. Always mark with `【听不清】` and note it for user verification.
 - **Creative element extraction**: Each element must be concrete and reusable — not vague observations. Include why it works (psychological/narrative basis) and what types of ads it suits.
